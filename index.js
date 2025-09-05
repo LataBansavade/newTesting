@@ -1,9 +1,6 @@
-
-
 import express from "express";
 import multer from "multer";
 import fs from "fs";
-import path from "path";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 
@@ -14,57 +11,6 @@ const upload = multer({ dest: "uploads/" });
 app.use(express.json());
 
 const client = new OpenAI({ apiKey: process.env.OPEN_AI_KEY });
-
-// -----------------------------
-// JSON Schema (Structured Outputs)
-// -----------------------------
-const drinkItemSchema = {
-  type: "object",
-  properties: {
-    name: { type: "string" },
-    price: { type: ["string","null"] },
-    alcohol_type: { type: "string" },
-    strength: { type: "string" },
-    glassware: { type: "string" },
-    acidity: { type: "string" },
-    sweetness: { type: "string" },
-    bitterness: { type: "string" },
-    spice: { type: "string" },
-    ingredients: { type: "array", items: { type: "string" } },
-    match_percentage: { type: "integer" },
-    field_scores: {
-      type: "object",
-      properties: {
-        alcohol_type: { type: "integer" },
-        strength: { type: "integer" },
-        glassware: { type: "integer" },
-        acidity: { type: "integer" },
-        sweetness: { type: "integer" },
-        bitterness: { type: "integer" },
-        spice: { type: "integer" }
-      },
-      required: ["alcohol_type","strength","glassware","acidity","sweetness","bitterness","spice"]
-    },
-    reasoning: { type: "string" },
-    assumptions: { type: ["string","null"] }
-  },
-  required: ["name","alcohol_type","strength","glassware","acidity","sweetness","bitterness","spice","match_percentage","field_scores"]
-};
-
-const drinksArraySchema = {
-  name: "drinks_response",
-  strict: true,
-  schema: {
-    type: "object",
-    properties: {
-      preference: { type: "object" },
-      drinks: { type: "array", items: drinkItemSchema },
-      sorted_by: { type: "string" },
-      notes: { type: "string" }
-    },
-    required: ["preference","drinks","sorted_by"]
-  }
-};
 
 // -----------------------------
 // System Prompt (GPT-5 Agent)
@@ -287,91 +233,6 @@ This is image ${i+1} of ${files.length}.
   }
 });
 
-// Add a helper function to normalize strength values consistently
-function normalizeStrengthValue(value) {
-  if (!value) return "Medium";
-  const v = String(value).toLowerCase().trim();
-  
-  if (["very strong", "extra strong", "boozy", "spirit-forward"].includes(v)) 
-    return "Very strong";
-  if (["strong", "high"].includes(v)) 
-    return "Strong";
-  if (["medium", "normal", "moderate"].includes(v)) 
-    return "Medium";
-  if (["weak", "light", "low", "mild"].includes(v)) 
-    return "Low";
-  
-  return v.charAt(0).toUpperCase() + v.slice(1); // Capitalize first letter
-}
-
-// Add a function to standardize preferences display
-function standardizePreferences(prefs) {
-  const standardized = {...prefs};
-  
-  // Standardize alcohol_type capitalization
-  if (standardized.alcohol_type) {
-    standardized.alcohol_type = standardized.alcohol_type.charAt(0).toUpperCase() + 
-                               standardized.alcohol_type.slice(1).toLowerCase();
-  }
-  
-  // Standardize strength values
-  if (standardized.strength) {
-    standardized.strength = normalizeStrengthValue(standardized.strength);
-  }
-  
-  // Standardize other attributes (capitalize first letter)
-  const textFields = ['glassware', 'acidity', 'sweetness', 'bitterness', 'spice'];
-  textFields.forEach(field => {
-    if (standardized[field]) {
-      standardized[field] = standardized[field].charAt(0).toUpperCase() + 
-                           standardized[field].slice(1).toLowerCase();
-    }
-  });
-  
-  return standardized;
-}
-
-// Enhance the score validation to be more accurate
-function validateScores(drink) {
-  // Ensure all scores are within range 0-100
-  if (drink.field_scores) {
-    Object.keys(drink.field_scores).forEach(key => {
-      const score = drink.field_scores[key];
-      if (typeof score !== 'number' || isNaN(score) || score < 0) {
-        drink.field_scores[key] = 0;
-      } else if (score > 100) {
-        drink.field_scores[key] = 100;
-      } else {
-        drink.field_scores[key] = Math.round(score); // Ensure integer scores
-      }
-    });
-  }
-  
-  // Ensure match_percentage is calculated correctly (sum of weighted scores)
-  const weights = {
-    alcohol_type: 0.40,
-    strength: 0.20,
-    glassware: 0.10,
-    acidity: 0.10,
-    sweetness: 0.08,
-    bitterness: 0.08,
-    spice: 0.04
-  };
-  
-  let totalScore = 0;
-  if (drink.field_scores) {
-    Object.entries(weights).forEach(([key, weight]) => {
-      if (typeof drink.field_scores[key] === 'number') {
-        totalScore += (drink.field_scores[key] / 100) * weight * 100;
-      }
-    });
-  }
-  
-  // Round to 1 decimal place
-  drink.match_percentage = Math.round(totalScore * 10) / 10;
-  
-  return drink;
-}
 
 
 
